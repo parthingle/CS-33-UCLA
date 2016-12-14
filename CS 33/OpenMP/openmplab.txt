@@ -1,0 +1,102 @@
+1. We first determine how much time it takes to run func.c without any optimization:
+
+$ make seq
+$ ./seq
+
+FUNC TIME : 0.755344
+TOTAL TIME : 2.847308
+
+
+Now, we make the program with GPROF to see which function runs the slowest among func0 - func5 and which function needs to be fixed the most:
+
+$ make seq GPROF=1
+$ ./seq
+
+FUNC TIME : 0.797476
+TOTAL TIME : 2.987786
+
+
+$ gprof seq | less
+
+Flat profile:
+
+Each sample counts as 0.01 seconds.
+  %   cumulative   self              self     total
+ time   seconds   seconds    calls  ms/call  ms/call  name
+ 76.05      0.60     0.60       15    40.05    41.45  func1
+ 13.94      0.71     0.11  5177344     0.00     0.00  rand2
+  2.54      0.73     0.02        2    10.01    10.01  init
+  2.54      0.75     0.02        1    20.03   109.26  addSeed
+  1.27      0.76     0.01       16     0.63     0.63  dilateMatrix
+  1.27      0.77     0.01       15     0.67     0.67  func4
+  1.27      0.78     0.01        1    10.01    20.03  imdilateDisk
+  1.27      0.79     0.01                             findIndex
+  0.00      0.79     0.00   983042     0.00     0.00  round
+  0.00      0.79     0.00   491520     0.00     0.00  findIndexBin
+  0.00      0.79     0.00       15     0.00     0.00  func2
+  0.00      0.79     0.00       15     0.00     0.00  func3
+  0.00      0.79     0.00       15     0.00     0.00  func5
+  0.00      0.79     0.00       15     0.00     0.00  rand1
+  0.00      0.79     0.00        2     0.00     0.00  get_time
+  0.00      0.79     0.00        1     0.00     0.00  elapsed_time
+  0.00      0.79     0.00        1     0.00     0.00  fillMatrix
+  0.00      0.79     0.00        1     0.00     0.00  func0
+  0.00      0.79     0.00        1     0.00     0.00  getNeighbors
+FUNC TIME : 0.786216
+TOTAL TIME : 2.783087
+
+As we can see =, func1() takes the most time, which makes sense as func1 has one regular loop and another nested loop with two other loops in it. Hence, the greatest potential for improvement is in func1()
+
+
+Now, we modify func.c:
+
+The three main changes that I made were the following:
+
+1) In func0(), func4(), and func5(), the integer n was being cast to a double in every iteration of the loop, and casting is an expensive operation. To remove that redundancy, I created a local double (n2) and changed its value to int n cast into a double. This improves the performance of the loop without even using parallel processing
+
+2) In functions func0(), func1(), func2(), func4(), and func5(), I ran the loops in parallel while creating a private version of the iterator i so the values don't get mixed up between simultaneously running threads.
+
+3) In functions func2() and func3(), there were loops that added the sum of the successive iterations of an expression to a local variable. Parallizing a loop like that can lead to a wrong result. To fix that, we use the 'reduction' expression to store the individual values of the local variable in the memory, and added them together at the end. This method slows the parallelization a little, but it is necessary to get the correct answer.
+
+
+After making all the changes to func.c, I compile it:
+
+$ make omp MTRACE=1
+
+and run it four times to get the average of the time:
+
+$ ./omp
+
+
+[ingle@lnxsrv09 ~/omp/openmplab]$ ./omp
+FUNC TIME : 0.043091
+TOTAL TIME : 2.029776
+[ingle@lnxsrv09 ~/omp/openmplab]$ ./omp
+FUNC TIME : 0.043931
+TOTAL TIME : 2.078875
+[ingle@lnxsrv09 ~/omp/openmplab]$ ./omp
+FUNC TIME : 0.052058
+TOTAL TIME : 2.231330
+[ingle@lnxsrv09 ~/omp/openmplab]$ ./omp
+FUNC TIME : 0.043267
+TOTAL TIME : 2.073697
+
+
+The average FUNC time is ~0.045587 sec
+The average TOTAL time is ~2.10342 sec
+
+
+To verify if the modified program gives the intended output, we make using check:
+
+$ make check
+
+[ingle@lnxsrv09 ~/omp/openmplab]$ make check
+gcc -o omp  -O3 -fopenmp filter.c main.c func.c util.c -lm
+cp omp filter
+./filter
+FUNC TIME : 0.041367
+TOTAL TIME : 2.343377
+diff --brief correct.txt output.txt
+
+
+The output is correct!

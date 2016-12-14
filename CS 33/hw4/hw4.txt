@@ -1,0 +1,73 @@
+Homework 4
+
+2.89)
+A)
+return (float) x == (float) ax;
+
+This does not always yield 1. This is because casting the double ax onto a float can cause truncation of the decimal values beyond the accuracy of floats. So this statement doesn't always return 1
+
+
+B)
+return (dx -dy) == (double)(x-y);
+
+Yes, this always returns 1 as double is large enough to store the numbers after the decimal point in a and b, which are integers.
+
+
+C)
+return (dx + dy) + dz == dx + (dy + dz);
+
+Yes, this also always returns 1. Addition of doubles is assosicative. Adding them is different orders doesn't change the values.
+
+
+D)
+return (dx * dy) * dz == dx * (dy * dz);
+
+Yes, this too always returns 1. Doubles might have limited accuracy (even though it is more accurate than floats and objectively very accurate), but the numbers that might get truncated will be the same 	 
+
+
+E)
+return dx/dx ==dz/dz
+
+Not always true, because dividing doubles can lead to undefined results, for example when dx=0 or dz=0. That will output NaN, and NaN is undefined, and trying to equate them can throw an error.
+
+
+
+2.90)
+float fpwr2 (int x)
+{
+	/* Result exponent and fraction */
+	unsigned exp, frac;
+	unsigned u;
+
+	if(x< -149)
+	{
+		/* Too small. Return 0.0 */
+		//Smallest denormalized fractional number
+		//This number "collapses" to negative infinity
+		exp = 0;
+		frac = 0;
+	}
+	else if(x< -126)
+	{
+	/*Denormalized result*/
+	//'normal' denormalized result, the whole number is in the fractions
+		exp = 0;
+		frac = 1<<(23 -(-x-126));
+		/* in this 'if' block, x ranges from -149 and -127
+		depending on how large x is, we need to right shift 1 by the difference between x and 127, as the larger the number is (ie closer to -127), it gets right shifted more.*/
+	}
+	else if(x< 128)
+	{
+	/*Normalized result*/
+	//In this 'if' block, x ranges from -126 to 128.
+	//In the normalized range, the fractional part is 0, and the exponent lies between 1 and 255
+		exp = x+127;
+		frac = 0;
+	}
+	else
+	/*Too big. Return +oo */
+	{
+		exp = ;
+		frac = ;
+	}
+}

@@ -1,0 +1,29 @@
+0x0000000000542140 <Ftimes+0>:       48 89 f2        mov    %rsi,%rdx
+
+
+gdb ~eggert...
+
+break Ftimes
+set disassemble-next-line on
+
+define  name
+stepi
+info reg
+end
+
+run -batch -eval '(print (* 6997 -4398042316799 179))'
+
+call the macro
+copy the pointed line
+call the macro again
+compare the registers with the previous line and see what's different
+record in notepad
+
+
+Caveats:
+1. if you perform a jmp instruction, record where the %rip points to 
+2. If you access the stack memory in any way, record is as shown on the website
+3. same when you access the memory using ()s
+4. Sometimes we will jump out of data.c  
+5. Single lines almost always have more than one machine instruction. Copy all of them only is there is no jump instruction in them. If there is, don;t copy the line from the jump instruction
+6. To go back one step, use reverse-stepi

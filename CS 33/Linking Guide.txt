@@ -1,0 +1,12 @@
+Linking Guide:
+
+1)To build the executable, the linker must perform two main tasks:
+
+. Symbol resolution. Object files define and reference symbols. The purpose
+of symbol resolution is to associate each symbol reference with exactly one
+symbol definition.
+
+. Relocation. Compilers and assemblers generate code and data sections that
+start at address 0. The linker relocates these sections by associating a memory
+location with each symbol definition, and then modifying all of the references
+to those symbols so that they point to this memory location.

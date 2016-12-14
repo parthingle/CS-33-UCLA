@@ -1,0 +1,67 @@
+testovf.c
+
+
+When it is compiled using gcc -O2 -S testovf.c:
+
+It outputs:
+
+xorl    %eax, %eax
+        ret
+
+
+Which is essentially XORing the number inside %eax with itself --which always returns 0. We can draw the conclusion that by this method, the compiled knows that any number added to LONG_MAX will overflow, and that the return statement will always return 0.
+
+When it is compiled using gcc -c -O2 -fsanitize=undefined
+
+it produces this assembly code:
+
+ 	pushq   %rbp
+ 	pushq	 %rbx
+ 	movabsq $9223372036854775807, %rdx
+ 	subq    $8, %rsp
+ 	movq    big(%rip), %rbx
+ 	movq    %rbx, %rbp
+ 	addq    %rdx, %rbp
+ 	jo      .L6
+ .L2:
+    cmpq    %rbp, %rbx
+    setg    %al
+    addq    $8, %rsp
+    popq    %rbx
+    popq	%rbp
+    ret
+ .L6:
+    movq    %rbx, %rsi
+    movl    $.Lubsan_data0, %edi
+  >>call    __ubsan_handle_add_overflow
+    jmp     .L2
+
+main:
+    xorl    %eax, %eax
+    ret
+
+This shows that the by compiling with -O2 -fsanitize=undefined first checks for overflow. If the integer does overflow, it calls function __usban_handle_add_overflow to handle the overflow.
+
+
+
+Finally, when it is compiled uding -O2 -fwrapv,
+
+it produces the following assembly code:
+
+testovf:
+.LFB0:
+        .cfi_startproc
+        movq    big(%rip), %rdx
+        movabsq $9223372036854775807, %rax
+        addq    %rdx, %rax
+        cmpq    %rax, %rdx
+        setg    %al
+        ret
+main:        
+ 	xorl    %eax, %eax
+    	ret
+
+
+The purpose of fwrapv is to wrap around integers when they overflow --which is exactly what it does here. The 'big + LONG_MAX' overflows and becomes a number smaller than 'big', so the compiler rerturn 0 withouth throwing any errors.
+
+

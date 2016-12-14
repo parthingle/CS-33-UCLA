@@ -1,0 +1,40 @@
+1. The instruction that causes incorrect result is this instruction:
+
+0x00000000005436af <arith_driver+431>lisp.h:700	lea    0x0(,%rbp,4),%rax
+
+When %rbp = 0xb38e48c71bd31c6f, it causes overflow.
+
+
+2. In the file data.c, we can see that Vmost_positive_fixnum is defined as the value of MOST_POSITIVE_FIXNUM, and in the file lisp.h, there is the line 
+
+#define MOST_POSITIVE_FIXNUM (EMACS_INT_MAX >> INTTYPEBITS)
+and INTTYPEBITS == 2
+and the hex value of EMACS_INT_MAX in an x86-64 system is 0X7fffffffffffffff
+
+When we right-shift that with 2, 0X7fffffffffffffff>>2 = 0X1fffffffffffffff, which is equal to 2305843009213693951, the exact number that it returns.
+
+
+3. When the integer overflows by multiplication, the function will mask the result with an 'mask' called INTMASK, which is defined in lisp.h
+
+accum = ab&INTMAX;
+
+in the file 'lisp.h' the INTMASK 'mask' is defined as:
+
+INTMASK=(EMACS_INT_MAX >> (INTTYPEBITS -1));
+
+// = 0X3fffffffffffffff
+
+And since the multiplication two most-positive-fixnums will surely overflow, therefore the result of the wrapv method 'and'ed with INTMASK gives: 
+
+0X3fffffffffffffff&0Xc000000000000001 = 0X1
+
+
+4. In the case of -fsanitize=undefined, a different function (__ubsan_handle_add_overflow) handles overflow and prints a warning message. So in thiscase, gcc will handle the overflow and we will get a warning message when we try to multiply two very large numbers.
+
+
+5. -fwrapv doesn't give the correct answer either. It removes all bits beyond 64 bits, which gives the wrong answer.
+
+
+6. When -fwrapv is used, emacs doesn't handle overflow, -fwrapv just wraps around the integers following the two's complement representation, and does not throw any error. Thus emacs doesn't need to check for overflow anymmore.
+
+7. The efficiency differences are quite significant. There are 20 assembly instructions in -fsanitize=undefined (including resource heavy casting-to-unsigned instruction, which is what the function to fix overflow does) compared to 8 in -fwrapv, which just has to wrap around and not throw an error, further compared to just 2 assembly commands in -O2, whcih just has to return 0 every time.

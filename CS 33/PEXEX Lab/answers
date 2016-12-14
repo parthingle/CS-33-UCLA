@@ -1,0 +1,39 @@
+1. The instruction that causes incorrect result is this instruction:
+
+0x00000000005436af <arith_driver+431>lisp.h:700	lea    0x0(,%rbp,4),%rax
+
+When %rbp = 0xb38e48c71bd31c6f, it causes overflow.
+
+
+2. In the file data.c, we can see that Vmost_positive_fixnum is defined as the value of MOST_POSITIVE_FIXNUM, and in the file lisp.h, there is the line 
+
+#define MOST_POSITIVE_FIXNUM (EMACS_INT_MAX >> INTTYPEBITS)
+and INTTYPEBITS == 2
+and the hex value of EMACS_INT_MAX in an x86-64 system is 0X7fffffffffffffff
+
+When we right-shift that with 2, 0X7fffffffffffffff>>2 = 0X1fffffffffffffff, which is equal to 2305843009213693951, the exact number that it returns.
+
+
+3. When the integer overflows by multiplication, the function will mask the result with an 'mask' called INTMASK, which is defined in lisp.h
+
+accum = ab&INTMAX;
+
+in the file 'lisp.h' the INTMASK 'mask' is defined as:
+
+INTMASK=(EMACS_INT_MAX >> (INTTYPEBITS -1));
+
+// = 0X3fffffffffffffff
+
+And since the multiplication two most-positive-fixnums will surely overflow, therefore the result of the wrapv method 'and'ed with INTMASK gives: 
+
+0X3fffffffffffffff&0Xc000000000000001 = 0X1
+
+
+4. 
+
+5.
+
+
+6. When -fwrapv is used, emaacs doesn't handle overflow, -fwrapv just wraps around the integers, and does not throw any error.
+
+7. The efficiency differences are quite significant. 

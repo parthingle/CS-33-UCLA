@@ -1,0 +1,18 @@
+2.81) 
+
+A) (x<y) == (-x>-y)
+
+Always 1. It is so because x and y are both signed integers. ie the < and > comparative signed return the correct answers. Therefore, if x is less than y, -ve x is greater than -ve y
+
+B) ( (x+y)<<4) +y-x == 17*y+15
+
+Not always 1. For ex. if x=-2, and y=1:
+
+LHS = ((-2+1) << 4) +1 - (-1) 
+    =  (-16) +1 +1 = 14
+
+RHS = 17*(1) + 15(-2) = -13
+
+LHS=/=RHS
+
+C) 

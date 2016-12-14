@@ -1,0 +1,10 @@
+2.72)
+ A. size_t data type is an unsigned type of integer -- ie subtracting it from an integer will also return an unsigned int. This will leave out a possibility for it to overflow and return a positive value, which will clear the conditional statement, and hence return a wrong answer.  
+
+B. To fix it, the conditional statement must be:
+
+if (maxbytes >= sizeof (val)){
+...
+}
+
+This way, only if the numeric valu  
